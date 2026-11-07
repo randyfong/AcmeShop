@@ -1,9 +1,12 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional
 import httpx
 import logging
+import os
 from app.services.checkout import ledger, DuplicateChargeException
 
 logging.basicConfig(level=logging.INFO)
@@ -117,4 +120,19 @@ async def forward_to_never_twice(payload: EscalateRequest):
         "suggested_patch": "Wrap checkout handler in atomic mutex with Redis SETNX / memory set idempotency token lock.",
         "patch_verification_hash": "sha256:d8b2f901c0347ee61a654924a8ff602b9921bc9e345"
     }
+
+# Serve client production build if available
+client_dist_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "client", "dist")
+if os.path.exists(client_dist_path):
+    assets_path = os.path.join(client_dist_path, "assets")
+    if os.path.exists(assets_path):
+        app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        file_path = os.path.join(client_dist_path, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(client_dist_path, "index.html"))
+
 
